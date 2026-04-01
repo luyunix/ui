@@ -135,10 +135,24 @@ export const ChatInput = forwardRef<ChatInputRef, ChatInputProps>(
     }
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      // 支持 Ctrl/Cmd + Enter 发送
-      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      // Enter 发送（不带修饰键）
+      if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
         e.preventDefault()
         handleSend()
+      }
+      // Ctrl/Cmd/Shift + Enter 换行
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey || e.shiftKey)) {
+        e.preventDefault()
+        const target = e.target as HTMLTextAreaElement
+        const start = target.selectionStart
+        const end = target.selectionEnd
+        const newValue = inputValue.substring(0, start) + '\n' + inputValue.substring(end)
+        setInputValue(newValue)
+        onInputValueChange?.(newValue)
+        // 光标移到换行后
+        setTimeout(() => {
+          target.selectionStart = target.selectionEnd = start + 1
+        }, 0)
       }
     }
 
