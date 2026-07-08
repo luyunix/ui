@@ -2,7 +2,6 @@
 
 import Link from 'next/link'
 import {SidebarTrigger, useSidebar} from '@/components/ui/sidebar'
-import {FaberSettings} from '@/components/faber-settings'
 
 export function ChatHeader() {
   const {open, isMobile} = useSidebar()
@@ -16,8 +15,6 @@ export function ChatHeader() {
         {/* Logo占位符 */}
         <Link href="/" className="block bg-white w-[80px] h-9 rounded-md"/>
       </div>
-      {/* 右侧设置模态窗 */}
-      <FaberSettings/>
     </header>
   )
 }

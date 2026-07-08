@@ -14,6 +14,7 @@ interface VNCViewerProps {
 
 export function VNCViewer({ url, viewOnly, onStatusChange, reconnect = true }: VNCViewerProps) {
   const displayRef = useRef<HTMLDivElement>(null)
+  const rfbRef = useRef<RFB | null>(null)
   const onStatusChangeRef = useRef(onStatusChange)
   const [attempt, setAttempt] = useState(0)
 
@@ -46,12 +47,20 @@ export function VNCViewer({ url, viewOnly, onStatusChange, reconnect = true }: V
       rfb = new RFB(displayRef.current, url, {
         credentials: { password: '', username: '', target: '' },
       })
+      rfbRef.current = rfb
 
       rfb.viewOnly = viewOnly || false
+      rfb.focusOnClick = true
       rfb.scaleViewport = true
       rfb.background = '#000'
 
-      rfb.addEventListener('connect', () => onStatusChangeRef.current?.('connected'))
+      rfb.addEventListener('connect', () => {
+        onStatusChangeRef.current?.('connected')
+        if (!viewOnly) {
+          displayRef.current?.focus()
+          requestAnimationFrame(() => rfb?.focus())
+        }
+      })
       rfb.addEventListener('disconnect', (e: CustomEvent) => {
         if (disposed) return
         if (e.detail?.clean) {
@@ -69,6 +78,7 @@ export function VNCViewer({ url, viewOnly, onStatusChange, reconnect = true }: V
 
     return () => {
       disposed = true
+      rfbRef.current = null
       if (retryTimer) clearTimeout(retryTimer)
       try { rfb?.disconnect() } catch { /* noop */ }
     }
@@ -77,7 +87,13 @@ export function VNCViewer({ url, viewOnly, onStatusChange, reconnect = true }: V
   return (
     <div
       ref={displayRef}
-      style={{ width: '100%', height: '100%', background: '#000' }}
+      tabIndex={viewOnly ? -1 : 0}
+      onMouseDown={() => {
+        if (viewOnly) return
+        displayRef.current?.focus()
+        rfbRef.current?.focus()
+      }}
+      style={{ width: '100%', height: '100%', background: '#000', outline: 'none', touchAction: 'none' }}
     />
   )
 }

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar'
 import { Button } from '@/components/ui/button'
-import { Download, FileSearchCorner, FileText } from 'lucide-react'
+import { Download, FileSearchCorner, FileText, Monitor } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -41,6 +41,8 @@ export interface SessionHeaderProps {
   onFetchFiles?: () => void | Promise<void>
   /** 点击文件时的预览回调 */
   onFileClick?: (file: AttachmentFile) => void
+  /** 打开当前会话的远程桌面 */
+  onOpenVNC?: () => void
 }
 
 export function SessionHeader({
@@ -50,6 +52,7 @@ export function SessionHeader({
   onFileListOpenChange,
   onFetchFiles,
   onFileClick,
+  onOpenVNC,
 }: SessionHeaderProps) {
   const { open, isMobile } = useSidebar()
   const [mounted, setMounted] = useState(false)
@@ -129,6 +132,18 @@ export function SessionHeader({
       <div className="text-gray-700 text-lg whitespace-nowrap text-ellipsis overflow-hidden flex-1 min-w-0">
         {title || '未命名任务'}
       </div>
+      {onOpenVNC && (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="cursor-pointer flex-shrink-0"
+          onClick={onOpenVNC}
+          aria-label="打开远程桌面"
+          title="打开可操作远程桌面"
+        >
+          <Monitor />
+        </Button>
+      )}
       {mounted ? (
         <Dialog open={openState} onOpenChange={setOpenState}>
           <DialogTrigger asChild>

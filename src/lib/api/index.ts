@@ -22,6 +22,11 @@ export type {
   ExecutionStatus,
   ToolEventStatus,
   MCPTransport,
+  UserInfo,
+  AuthResponse,
+  LoginParams,
+  RegisterParams,
+  UpdateProfileParams,
   LLMConfig,
   AgentConfig,
   ListMCPServerItem,
@@ -52,7 +57,7 @@ export type {
 } from "./types";
 
 // 模块 API
+export { authApi } from "./auth";
 export { configApi } from "./config";
 export { fileApi } from "./file";
 export { sessionApi } from "./session";
-

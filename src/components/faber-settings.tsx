@@ -2,7 +2,7 @@
 
 import {useCallback, useEffect, useRef, useState} from 'react'
 import {toast} from 'sonner'
-import {LayoutGrid, LayoutList, Loader2, Languages, Settings, Trash, Wrench} from 'lucide-react'
+import {Eye, EyeOff, LayoutGrid, LayoutList, Loader2, Languages, Settings, Trash, Wrench} from 'lucide-react'
 import {
   Dialog,
   DialogClose,
@@ -34,6 +34,14 @@ type CommonSettingProps = {
 function CommonSetting({config, onChange}: CommonSettingProps) {
   const handleChange = (field: keyof AgentConfig, value: string) => {
     const numValue = value === '' ? undefined : Number(value)
+    if (field === 'max_iterations') {
+      onChange({
+        ...config,
+        max_iterations: numValue,
+        max_iterations_per_step: config.max_iterations_per_step ?? numValue,
+      })
+      return
+    }
     onChange({...config, [field]: numValue})
   }
 
@@ -44,18 +52,33 @@ function CommonSetting({config, onChange}: CommonSettingProps) {
           <FieldLegend className="text-lg font-bold text-gray-700">通用配置</FieldLegend>
           <FieldGroup>
             <Field>
-              <FieldLabel htmlFor="max_iterations">最大计划迭代次数</FieldLabel>
+              <FieldLabel htmlFor="max_iterations">最大总迭代次数</FieldLabel>
               <Input
                 id="max_iterations"
                 type="number"
-                placeholder="Agent最大迭代次数"
+                placeholder="Agent最大总迭代次数"
                 value={config.max_iterations ?? 100}
                 onChange={(e) => handleChange('max_iterations', e.target.value)}
-                min={0}
-                max={200}
+                min={1}
+                max={999}
               />
               <FieldDescription className="text-xs">
-                执行Agent最大能迭代循环调用工具的次数，默认为100
+                整个任务最大能迭代循环调用工具的次数，默认为100。
+              </FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="max_iterations_per_step">单步骤最大迭代次数</FieldLabel>
+              <Input
+                id="max_iterations_per_step"
+                type="number"
+                placeholder="每个计划步骤最大迭代次数"
+                value={config.max_iterations_per_step ?? config.max_iterations ?? 100}
+                onChange={(e) => handleChange('max_iterations_per_step', e.target.value)}
+                min={1}
+                max={999}
+              />
+              <FieldDescription className="text-xs">
+                计划模式下每个子步骤最多循环调用工具的次数。之前默认隐藏为20，复杂任务建议与总迭代次数保持一致。
               </FieldDescription>
             </Field>
             <Field>
@@ -103,6 +126,8 @@ type LLMSettingProps = {
 }
 
 function LLMSetting({config, onChange}: LLMSettingProps) {
+  const [showApiKey, setShowApiKey] = useState(false)
+
   const handleChange = (field: keyof LLMConfig, value: string) => {
     onChange({...config, [field]: value})
   }
@@ -133,13 +158,26 @@ function LLMSetting({config, onChange}: LLMSettingProps) {
             </Field>
             <Field>
               <FieldLabel htmlFor="api_key">提供商密钥</FieldLabel>
-              <Input
-                id="api_key"
-                type="password"
-                placeholder="请填写提供商API密钥"
-                value={config.api_key ?? ''}
-                onChange={(e) => handleChange('api_key', e.target.value)}
-              />
+              <div className="relative">
+                <Input
+                  id="api_key"
+                  type={showApiKey ? 'text' : 'password'}
+                  placeholder="请填写提供商API密钥"
+                  value={config.api_key ?? ''}
+                  onChange={(e) => handleChange('api_key', e.target.value)}
+                  autoComplete="off"
+                  className="pr-10"
+                />
+                <button
+                  type="button"
+                  aria-label={showApiKey ? '隐藏提供商密钥' : '显示提供商密钥'}
+                  title={showApiKey ? '隐藏密钥' : '显示密钥'}
+                  onClick={() => setShowApiKey((v) => !v)}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 inline-flex size-7 items-center justify-center rounded-md text-gray-500 hover:bg-gray-100 hover:text-gray-700 cursor-pointer"
+                >
+                  {showApiKey ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                </button>
+              </div>
               <FieldDescription className="text-xs">
                 请填写模型提供商密钥信息。
               </FieldDescription>
@@ -201,11 +239,13 @@ type A2ASettingProps = {
   servers: ListA2AServerItem[]
   loading: boolean
   onToggleEnabled: (id: string, enabled: boolean) => void
+  onTest: (id: string) => Promise<void>
+  testingId: string | null
   onDelete: (id: string) => void
   onAdd: (baseUrl: string) => Promise<boolean>
 }
 
-function A2ASetting({servers, loading, onToggleEnabled, onDelete, onAdd}: A2ASettingProps) {
+function A2ASetting({servers, loading, onToggleEnabled, onTest, testingId, onDelete, onAdd}: A2ASettingProps) {
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [addUrl, setAddUrl] = useState('')
   const [adding, setAdding] = useState(false)
@@ -306,10 +346,25 @@ function A2ASetting({servers, loading, onToggleEnabled, onDelete, onAdd}: A2ASet
                   <ItemContent>
                     <ItemTitle className="w-full flex justify-between items-center text-md font-bold text-gray-700">
                       <div className="flex gap-2 items-center">
-                        {server.name}
+                        {server.name || server.base_url}
                         {!server.enabled && <Badge>禁用</Badge>}
+                        <Badge variant={server.available ? 'secondary' : 'outline'}
+                               className={server.available ? 'text-emerald-700' : 'text-gray-400'}>
+                          {server.available ? '可用' : '不可用'}
+                        </Badge>
                       </div>
                       <div className="flex items-center justify-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="xs"
+                          className="cursor-pointer"
+                          disabled={testingId === server.id}
+                          onClick={() => onTest(server.id)}
+                        >
+                          {testingId === server.id && <Loader2 className="animate-spin"/>}
+                          测试连接
+                        </Button>
                         <Button
                           type="button"
                           variant="ghost"
@@ -327,6 +382,9 @@ function A2ASetting({servers, loading, onToggleEnabled, onDelete, onAdd}: A2ASet
                     </ItemTitle>
                     {server.description && (
                       <ItemDescription>{server.description}</ItemDescription>
+                    )}
+                    {!server.description && (
+                      <ItemDescription>{server.base_url}</ItemDescription>
                     )}
                     <ItemDescription className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <LayoutList size={12}/>
@@ -366,11 +424,13 @@ type MCPSettingProps = {
   servers: ListMCPServerItem[]
   loading: boolean
   onToggleEnabled: (serverName: string, enabled: boolean) => void
+  onTest: (serverName: string) => Promise<void>
+  testingName: string | null
   onDelete: (serverName: string) => void
   onAdd: (config: string) => Promise<boolean>
 }
 
-function MCPSetting({servers, loading, onToggleEnabled, onDelete, onAdd}: MCPSettingProps) {
+function MCPSetting({servers, loading, onToggleEnabled, onTest, testingName, onDelete, onAdd}: MCPSettingProps) {
   const [addDialogOpen, setAddDialogOpen] = useState(false)
   const [addConfig, setAddConfig] = useState('')
   const [adding, setAdding] = useState(false)
@@ -488,8 +548,23 @@ function MCPSetting({servers, loading, onToggleEnabled, onDelete, onAdd}: MCPSet
                         {server.server_name}
                         <Badge>{server.transport}</Badge>
                         {!server.enabled && <Badge>禁用</Badge>}
+                        <Badge variant={server.available ? 'secondary' : 'outline'}
+                               className={server.available ? 'text-emerald-700' : 'text-gray-400'}>
+                          {server.available ? '可用' : '不可用'}
+                        </Badge>
                       </div>
                       <div className="flex items-center justify-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="xs"
+                          className="cursor-pointer"
+                          disabled={testingName === server.server_name}
+                          onClick={() => onTest(server.server_name)}
+                        >
+                          {testingName === server.server_name && <Loader2 className="animate-spin"/>}
+                          测试连接
+                        </Button>
                         <Button
                           type="button"
                           variant="ghost"
@@ -561,6 +636,10 @@ export function FaberSettings() {
   const [loadingMCP, setLoadingMCP] = useState(false)
   const [loadingA2A, setLoadingA2A] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [testingLLM, setTestingLLM] = useState(false)
+  const [testingAndSavingLLM, setTestingAndSavingLLM] = useState(false)
+  const [testingMCPName, setTestingMCPName] = useState<string | null>(null)
+  const [testingA2AId, setTestingA2AId] = useState<string | null>(null)
 
   // 防止 Strict Mode 重复获取
   const fetchingRef = useRef(false)
@@ -633,9 +712,6 @@ export function FaberSettings() {
       if (activeSetting === 'common-setting') {
         await configApi.updateAgentConfig(agentConfig)
         toast.success('通用配置保存成功')
-      } else if (activeSetting === 'llm-setting') {
-        await configApi.updateLLMConfig(llmConfig)
-        toast.success('模型提供商配置保存成功')
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : '保存失败'
@@ -644,6 +720,34 @@ export function FaberSettings() {
       setSaving(false)
     }
   }
+
+  const handleLLMTest = useCallback(async () => {
+    setTestingLLM(true)
+    try {
+      const result = await configApi.testLLMConfig(llmConfig)
+      if (result.available) {
+        toast.success('模型连接测试成功')
+      } else {
+        toast.error('模型连接测试失败，请检查基础地址、密钥和模型名')
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '模型连接测试失败')
+    } finally {
+      setTestingLLM(false)
+    }
+  }, [llmConfig])
+
+  const handleLLMTestAndSave = useCallback(async () => {
+    setTestingAndSavingLLM(true)
+    try {
+      await configApi.updateLLMConfig(llmConfig)
+      toast.success('模型连接测试通过，配置已保存')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : '模型连接测试失败，未保存')
+    } finally {
+      setTestingAndSavingLLM(false)
+    }
+  }, [llmConfig])
 
   // ---- MCP 操作 ----
   const handleMCPToggle = useCallback(async (serverName: string, enabled: boolean) => {
@@ -675,6 +779,28 @@ export function FaberSettings() {
       toast.error(`删除失败，请重试`)
     }
   }, [mcpServers])
+
+  const handleMCPTest = useCallback(async (serverName: string) => {
+    setTestingMCPName(serverName)
+    try {
+      const result = await configApi.testMCPServer(serverName)
+      setMcpServers((prev) =>
+        prev.map((s) => (s.server_name === serverName ? {...s, available: result.available} : s)),
+      )
+      if (result.available) {
+        toast.success(`MCP 服务器「${serverName}」连接成功`)
+      } else {
+        toast.error(`MCP 服务器「${serverName}」连接失败`)
+      }
+    } catch (err) {
+      setMcpServers((prev) =>
+        prev.map((s) => (s.server_name === serverName ? {...s, available: false} : s)),
+      )
+      toast.error(err instanceof Error ? err.message : '连接测试失败')
+    } finally {
+      setTestingMCPName(null)
+    }
+  }, [])
 
   const handleMCPAdd = useCallback(async (configText: string): Promise<boolean> => {
     try {
@@ -726,6 +852,28 @@ export function FaberSettings() {
       toast.error(`删除失败，请重试`)
     }
   }, [a2aServers])
+
+  const handleA2ATest = useCallback(async (id: string) => {
+    setTestingA2AId(id)
+    try {
+      const result = await configApi.testA2AServer(id)
+      setA2aServers((prev) =>
+        prev.map((s) => (s.id === id ? {...s, available: result.available} : s)),
+      )
+      if (result.available) {
+        toast.success('A2A Agent 连接成功')
+      } else {
+        toast.error('A2A Agent 连接失败')
+      }
+    } catch (err) {
+      setA2aServers((prev) =>
+        prev.map((s) => (s.id === id ? {...s, available: false} : s)),
+      )
+      toast.error(err instanceof Error ? err.message : '连接测试失败')
+    } finally {
+      setTestingA2AId(null)
+    }
+  }, [])
 
   const handleA2AAdd = useCallback(async (baseUrl: string): Promise<boolean> => {
     try {
@@ -812,6 +960,8 @@ export function FaberSettings() {
                 servers={a2aServers}
                 loading={loadingA2A}
                 onToggleEnabled={handleA2AToggle}
+                onTest={handleA2ATest}
+                testingId={testingA2AId}
                 onDelete={handleA2ADelete}
                 onAdd={handleA2AAdd}
               />
@@ -821,6 +971,8 @@ export function FaberSettings() {
                 servers={mcpServers}
                 loading={loadingMCP}
                 onToggleEnabled={handleMCPToggle}
+                onTest={handleMCPTest}
+                testingName={testingMCPName}
                 onDelete={handleMCPDelete}
                 onAdd={handleMCPAdd}
               />
@@ -831,16 +983,44 @@ export function FaberSettings() {
         {/* 底部按钮 */}
         <DialogFooter className="border-t pt-4">
           <DialogClose asChild>
-            <Button variant="outline" className="cursor-pointer">取消</Button>
+            <Button
+              variant="outline"
+              className="cursor-pointer"
+              disabled={saving || testingLLM || testingAndSavingLLM}
+            >
+              取消
+            </Button>
           </DialogClose>
-          <Button
-            className="cursor-pointer"
-            disabled={saving}
-            onClick={handleSave}
-          >
-            {saving && <Loader2 className="animate-spin"/>}
-            保存
-          </Button>
+          {activeSetting === 'llm-setting' ? (
+            <>
+              <Button
+                variant="outline"
+                className="cursor-pointer"
+                disabled={testingLLM || testingAndSavingLLM || saving}
+                onClick={handleLLMTest}
+              >
+                {testingLLM && <Loader2 className="animate-spin"/>}
+                测试连接
+              </Button>
+              <Button
+                className="cursor-pointer"
+                disabled={testingLLM || testingAndSavingLLM || saving}
+                onClick={handleLLMTestAndSave}
+              >
+                {testingAndSavingLLM && <Loader2 className="animate-spin"/>}
+                测试连接并保存
+              </Button>
+            </>
+          ) : (
+            <Button
+              className="cursor-pointer"
+              disabled={saving}
+              onClick={handleSave}
+            >
+              {saving && <Loader2 className="animate-spin"/>}
+              保存
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

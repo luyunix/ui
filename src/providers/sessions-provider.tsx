@@ -71,7 +71,6 @@ export function SessionsProvider({children}: { children: React.ReactNode }) {
       const raw = await sessionApi.getSessions()
       setSessions(normalizeSessions(raw))
     } catch (err) {
-      console.error('[Sessions] REST 获取失败:', err)
       setError(err instanceof Error ? err.message : '获取会话列表失败')
     } finally {
       setLoading(false)
@@ -94,7 +93,6 @@ export function SessionsProvider({children}: { children: React.ReactNode }) {
         setError(null)
       })
       .catch((err) => {
-        console.error('[Sessions] 初始获取失败:', err)
         setError(err instanceof Error ? err.message : '获取会话列表失败')
         setLoading(false)
       })
@@ -130,7 +128,7 @@ export function SessionsProvider({children}: { children: React.ReactNode }) {
           console.warn('[Sessions] SSE 断开:', err.message)
 
           if (retryCount >= RETRY_CONFIG.maxRetries) {
-            console.error('[Sessions] 超过最大重试次数，停止重连')
+            setError('会话实时连接已断开，请稍后刷新')
             return
           }
 
@@ -194,4 +192,3 @@ export function useSessions(): SessionsContextValue {
   }
   return ctx
 }
-

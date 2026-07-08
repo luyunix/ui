@@ -36,8 +36,10 @@ export function useSessionDetail(
   const messageStreamCleanupRef = useRef<(() => void) | null>(null)
   const isSendMessageRef = useRef(false)
   const lastEventIdRef = useRef<string | null>(null)
+  const seenEventIdsRef = useRef<Set<string>>(new Set())
+  const sessionStatusRef = useRef<string | null>(null)
 
-  const appendEvent = useCallback((ev: SSEEventData) => {
+  const appendEvent = useCallback((ev: SSEEventData): SSEEventData | null => {
     let evToAppend = ev
     if (ev.data && typeof ev.data === 'object' && ('event' in ev.data || 'type' in ev.data) && 'data' in ev.data) {
       const normalized = normalizeEvent(ev.data as { event?: string; type?: string; data?: unknown })
@@ -45,7 +47,13 @@ export function useSessionDetail(
     }
 
     const eventId = (evToAppend.data as { event_id?: string })?.event_id
-    if (eventId) lastEventIdRef.current = eventId
+    if (eventId) {
+      if (seenEventIdsRef.current.has(eventId)) {
+        return null
+      }
+      seenEventIdsRef.current.add(eventId)
+      lastEventIdRef.current = eventId
+    }
 
     setEvents((prev) => [...prev, evToAppend])
     
@@ -60,9 +68,11 @@ export function useSessionDetail(
     if (evToAppend.type === 'step') {
       const stepData = evToAppend.data as { status?: string }
       if (stepData.status === 'running') {
+        sessionStatusRef.current = 'running'
         setSession((prev) => prev ? { ...prev, status: 'running' } : null)
       }
       if (stepData.status === 'waiting') {
+        sessionStatusRef.current = 'waiting'
         setSession((prev) => prev ? { ...prev, status: 'waiting' } : null)
         setStreaming(false)
       }
@@ -72,6 +82,7 @@ export function useSessionDetail(
     if (evToAppend.type === 'tool') {
       const toolData = evToAppend.data as { function?: string; status?: string }
       if (toolData.function === 'message_ask_user' && toolData.status === 'calling') {
+        sessionStatusRef.current = 'waiting'
         setSession((prev) => prev ? { ...prev, status: 'waiting' } : null)
         setStreaming(false)
       }
@@ -79,19 +90,26 @@ export function useSessionDetail(
 
     // wait 事件 → 等待用户输入
     if (evToAppend.type === 'wait') {
+      sessionStatusRef.current = 'waiting'
       setSession((prev) => prev ? { ...prev, status: 'waiting' } : null)
       setStreaming(false)
     }
     
     // done 事件时更新为 completed
     if (evToAppend.type === 'done') {
+      sessionStatusRef.current = 'completed'
       setSession((prev) => prev ? { ...prev, status: 'completed' } : null)
+      setStreaming(false)
     }
     
     // error 事件时也可以认为任务结束
     if (evToAppend.type === 'error') {
+      sessionStatusRef.current = 'completed'
       setSession((prev) => prev ? { ...prev, status: 'completed' } : null)
+      setStreaming(false)
     }
+
+    return evToAppend
   }, [])
 
   const startEmptyStream = useCallback(() => {
@@ -112,7 +130,11 @@ export function useSessionDetail(
         if (err.message === 'SSE_STREAM_END') {
           emptyStreamCleanupRef.current = null
           setTimeout(() => {
-            if (!emptyStreamCleanupRef.current && !isSendMessageRef.current) {
+            if (
+              !emptyStreamCleanupRef.current &&
+              !isSendMessageRef.current &&
+              sessionStatusRef.current !== 'completed'
+            ) {
               startEmptyStream()
             }
           }, 500)
@@ -149,14 +171,24 @@ export function useSessionDetail(
         sessionApi.getSessionDetail(sessionId),
         sessionApi.getSessionFiles(sessionId),
       ])
+      sessionStatusRef.current = detail.status
       setSession(detail)
       setFiles(normalizeFileList(fileListRaw))
       const rawEvents = (detail as { events?: unknown }).events
       if (rawEvents && Array.isArray(rawEvents) && rawEvents.length > 0) {
         const normalized = normalizeEvents(rawEvents)
+        seenEventIdsRef.current = new Set(
+          normalized
+            .map((ev) => (ev.data as { event_id?: string })?.event_id)
+            .filter((id): id is string => Boolean(id)),
+        )
         setEvents(normalized)
         const lastEvId = (normalized[normalized.length - 1]?.data as { event_id?: string })?.event_id
         if (lastEvId) lastEventIdRef.current = lastEvId
+      } else {
+        seenEventIdsRef.current = new Set()
+        lastEventIdRef.current = null
+        setEvents([])
       }
     } catch (e) {
       setError(e instanceof Error ? e : new Error('加载失败'))
@@ -182,9 +214,15 @@ export function useSessionDetail(
       setFiles([])
       setEvents([])
       setError(null)
+      seenEventIdsRef.current = new Set()
+      lastEventIdRef.current = null
+      sessionStatusRef.current = null
       stopEmptyStream()
       return
     }
+    seenEventIdsRef.current = new Set()
+    lastEventIdRef.current = null
+    sessionStatusRef.current = null
     setLoading(true)
     refresh().then(() => {
       // 由下面的 effect 根据 session 状态决定是否开空流
@@ -232,11 +270,12 @@ export function useSessionDetail(
       setStreaming(true)
       
       // 立即更新状态为 running，不等待 SSE 事件
+      sessionStatusRef.current = 'running'
       setSession((prev) => prev ? { ...prev, status: 'running' } : null)
       
       const onEvent = (ev: SSEEventData) => {
-        appendEvent(ev)
-        if (ev.type === 'done') {
+        const appended = appendEvent(ev)
+        if (appended?.type === 'done' || appended?.type === 'error' || appended?.type === 'wait') {
           setStreaming(false)
           isSendMessageRef.current = false
           // 清理消息流的 cleanup
@@ -245,7 +284,9 @@ export function useSessionDetail(
             messageStreamCleanupRef.current = null
           }
           setSession((prev) => prev ? { ...prev } : null)
-          startEmptyStream()
+          if (appended.type !== 'done' && appended.type !== 'error') {
+            startEmptyStream()
+          }
         }
       }
       const messageStreamCleanup = sessionApi.chat(
@@ -262,11 +303,13 @@ export function useSessionDetail(
           if (err.message === 'SSE_STREAM_END') {
             setStreaming(false)
             isSendMessageRef.current = false
-            if (messageStreamCleanupRef.current) {
-              messageStreamCleanupRef.current()
-              messageStreamCleanupRef.current = null
+          if (messageStreamCleanupRef.current) {
+            messageStreamCleanupRef.current()
+            messageStreamCleanupRef.current = null
+          }
+            if (sessionStatusRef.current !== 'completed') {
+              startEmptyStream()
             }
-            startEmptyStream()
             return
           }
           // 实际错误

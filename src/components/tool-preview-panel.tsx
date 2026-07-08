@@ -8,6 +8,7 @@ import type { ToolKind } from '@/components/tool-use/utils'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
 import type { VNCStatus } from '@/components/vnc-viewer'
+import { AUTH_TOKEN_STORAGE_KEY } from '@/lib/api/fetch'
 import {
   Maximize2,
   Monitor,
@@ -91,14 +92,16 @@ function ToolKindIcon({ kind }: { kind: ToolKind }) {
 
 function buildVNCUrl(sessionId: string): string {
   const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api'
+  const token = window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)
+  const query = token ? `?token=${encodeURIComponent(token)}` : ''
 
   try {
     const url = new URL(apiBase)
     const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-    return `${protocol}//${url.host}${url.pathname}/sessions/${sessionId}/vnc`
+    return `${protocol}//${url.host}${url.pathname}/sessions/${sessionId}/vnc${query}`
   } catch {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    return `${protocol}//${window.location.host}${apiBase}/sessions/${sessionId}/vnc`
+    return `${protocol}//${window.location.host}${apiBase}/sessions/${sessionId}/vnc${query}`
   }
 }
 
@@ -178,7 +181,7 @@ function LiveBrowserFrame({ sessionId }: { sessionId: string }) {
 
   return (
     <div className="h-full w-full relative bg-black">
-      <VNCViewer url={vncUrl} viewOnly onStatusChange={handleStatusChange} />
+      <VNCViewer url={vncUrl} viewOnly={false} onStatusChange={handleStatusChange} />
       {status === 'connecting' && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/80 text-white">
           <Loader2 className="size-5 animate-spin" />
@@ -232,6 +235,7 @@ function BrowserPreview({ tool, sessionId, onOpenVNC }: { tool: ToolEvent; sessi
             onClick={onOpenVNC}
             className="absolute bottom-3 right-3 w-9 h-9 rounded-full bg-gray-800/80 text-white flex items-center justify-center shadow-lg hover:bg-gray-700 transition-colors cursor-pointer z-10"
             aria-label="打开远程桌面"
+            title="打开可操作远程桌面"
           >
             <Sparkles size={16} />
           </button>
@@ -244,6 +248,7 @@ function BrowserPreview({ tool, sessionId, onOpenVNC }: { tool: ToolEvent; sessi
 function SearchPreview({ tool }: { tool: ToolEvent }) {
   const content = getToolContent(tool)
   const rawResults = content?.results
+  const isSearching = tool.status !== 'called'
 
   const results: SearchResultItem[] = useMemo(() => {
     if (Array.isArray(rawResults)) return rawResults as SearchResultItem[]
@@ -276,7 +281,12 @@ function SearchPreview({ tool }: { tool: ToolEvent }) {
               <div className="text-xs text-gray-600 line-clamp-2">{item.snippet}</div>
             )}
           </a>
-        )) : (
+        )) : isSearching ? (
+          <div className="flex items-center justify-center gap-2 text-sm text-gray-500 py-8">
+            <Loader2 className="size-4 animate-spin" />
+            <span>正在搜索...</span>
+          </div>
+        ) : (
           <div className="text-sm text-gray-500 text-center py-8">暂无搜索结果</div>
         )}
       </div>

@@ -27,6 +27,38 @@ export type ToolEventStatus = "calling" | "called";
  */
 export type MCPTransport = "stdio" | "sse" | "streamable_http";
 
+// ==================== 认证模块类型 ====================
+
+export type UserInfo = {
+  id: string;
+  email: string;
+  username: string;
+  avatar_url?: string;
+  is_active: boolean;
+  last_login_at?: string | null;
+  created_at: string;
+};
+
+export type AuthResponse = {
+  access_token: string;
+  token_type: "bearer";
+  user: UserInfo;
+};
+
+export type LoginParams = {
+  email: string;
+  password: string;
+};
+
+export type RegisterParams = LoginParams & {
+  username?: string;
+};
+
+export type UpdateProfileParams = {
+  username: string;
+  avatar_url?: string;
+};
+
 // ==================== 配置模块类型 ====================
 
 /**
@@ -46,6 +78,7 @@ export type LLMConfig = {
  */
 export type AgentConfig = {
   max_iterations?: number;
+  max_iterations_per_step?: number;
   max_retries?: number;
   max_search_results?: number;
   [key: string]: unknown;
@@ -57,6 +90,7 @@ export type AgentConfig = {
 export type ListMCPServerItem = {
   server_name: string;
   enabled: boolean;
+  available: boolean;
   transport: MCPTransport;
   tools: string[];
 };
@@ -74,6 +108,7 @@ export type MCPServersData = {
 export type MCPServerConfig = {
   transport?: MCPTransport;
   enabled?: boolean;
+  available?: boolean;
   description?: string | null;
   env?: Record<string, unknown> | null;
   command?: string | null;
@@ -96,6 +131,7 @@ export type MCPConfig = {
  */
 export type ListA2AServerItem = {
   id: string;
+  base_url: string;
   name: string;
   description: string;
   input_modes: string[];
@@ -103,6 +139,7 @@ export type ListA2AServerItem = {
   streaming: boolean;
   push_notifications: boolean;
   enabled: boolean;
+  available: boolean;
 };
 
 /**
@@ -126,6 +163,7 @@ export type CreateA2AServerParams = {
  */
 export type FileInfo = {
   id: string;
+  user_id?: string | null;
   filename: string;
   filepath: string;
   key: string;
@@ -150,6 +188,7 @@ export type FileUploadParams = {
  */
 export type Session = {
   session_id: string;
+  user_id?: string | null;
   title: string;
   latest_message: string;
   latest_message_at: string;
@@ -304,4 +343,3 @@ export type ViewShellParams = {
   shell_session_id: string;
   [key: string]: unknown;
 };
-

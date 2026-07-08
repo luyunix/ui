@@ -27,6 +27,15 @@ export const configApi = {
   },
 
   /**
+   * 测试 LLM 配置，不保存
+   */
+  testLLMConfig: (config: LLMConfig): Promise<{ available: boolean }> => {
+    return post<{ available: boolean }>("/app-config/llm/test", config, {
+      timeout: 20000,
+    });
+  },
+
+  /**
    * 获取 Agent 通用配置
    */
   getAgentConfig: (): Promise<AgentConfig> => {
@@ -76,6 +85,16 @@ export const configApi = {
   },
 
   /**
+   * 测试 MCP 连接，成功后后端会标记为可用
+   */
+  testMCPServer: (serverName: string): Promise<{ available: boolean }> => {
+    return post<{ available: boolean }>(
+      `/app-config/mcp-servers/${serverName}/test`,
+      {}
+    );
+  },
+
+  /**
    * 获取 A2A 服务器列表
    */
   getA2AServers: (): Promise<A2AServersData> => {
@@ -109,5 +128,14 @@ export const configApi = {
       { enabled }
     );
   },
-};
 
+  /**
+   * 测试 A2A 连接，成功后后端会标记为可用
+   */
+  testA2AServer: (a2aId: string): Promise<{ available: boolean }> => {
+    return post<{ available: boolean }>(
+      `/app-config/a2a-servers/${a2aId}/test`,
+      {}
+    );
+  },
+};

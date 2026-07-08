@@ -1,5 +1,10 @@
-import { get, post } from "./fetch";
+import { AUTH_TOKEN_STORAGE_KEY, get, post } from "./fetch";
 import type { FileInfo, FileUploadParams } from "./types";
+
+function getStoredAuthToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+}
 
 /**
  * 文件模块 API
@@ -36,8 +41,12 @@ export const fileApi = {
    * @returns Blob 对象
    */
   downloadFile: async (fileId: string): Promise<Blob> => {
+    const token = getStoredAuthToken();
     const response = await fetch(
-      `${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api"}/files/${fileId}/download`
+      `${process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api"}/files/${fileId}/download`,
+      {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      }
     );
 
     if (!response.ok) {
@@ -58,4 +67,3 @@ export const fileApi = {
     return `${baseURL}/files/${fileId}/download`;
   },
 };
-

@@ -1,10 +1,8 @@
 import React from 'react'
 import type {Metadata} from 'next'
-import {SidebarProvider} from '@/components/ui/sidebar'
-import {SessionsProvider} from '@/providers/sessions-provider'
 import {Toaster} from '@/components/ui/sonner'
 import './globals.css'
-import {LeftPanel} from '@/components/left-panel'
+import {AppShell} from '@/components/app-shell'
 
 export const metadata: Metadata = {
   title: 'Faber',
@@ -24,23 +22,7 @@ export default function RootLayout(
   return (
     <html lang="zh-CN" suppressHydrationWarning>
     <body className="h-screen overflow-hidden">
-    <SessionsProvider>
-      <SidebarProvider
-        style={{
-          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-          // @ts-expect-error
-          '--sidebar-width': '300px',
-          '--sidebar-width-icon': '300px',
-        }}
-      >
-        {/* 左侧的面板 */}
-        <LeftPanel/>
-        {/* 右侧的内容 */}
-        <div className="flex-1 bg-[#f8f8f7] h-screen overflow-hidden">
-          {children}
-        </div>
-      </SidebarProvider>
-    </SessionsProvider>
+    <AppShell>{children}</AppShell>
     <Toaster position="top-center" richColors/>
     </body>
     </html>

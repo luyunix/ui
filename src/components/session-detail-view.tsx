@@ -11,6 +11,7 @@ import { ToolPreviewPanel } from '@/components/tool-preview-panel'
 import { VNCOverlay } from '@/components/vnc-overlay'
 import { useSessionDetail } from '@/hooks/use-session-detail'
 import { getToolKind } from '@/components/tool-use/utils'
+import { ApiError } from '@/lib/api/fetch'
 import {
   eventsToTimeline,
   getLatestPlanFromEvents,
@@ -48,6 +49,12 @@ function findLatestTool(timeline: TimelineItem[]): ToolEvent | null {
   return null
 }
 
+function isSessionAccessError(error: Error | null): boolean {
+  if (!error) return false
+  if (error instanceof ApiError) return error.code === 403 || error.code === 404
+  return error.message.includes('会话不存在') || error.message.includes('无权限')
+}
+
 export function SessionDetailView({ sessionId, initialMessage, initialAttachments, hasInitialMessage }: SessionDetailViewProps) {
   const router = useRouter()
   const {
@@ -74,8 +81,10 @@ export function SessionDetailView({ sessionId, initialMessage, initialAttachment
   const scrollEndRef = useRef<HTMLDivElement>(null)
   const prevToolCountRef = useRef(0)
   const autoPreviewToolIdRef = useRef<string | null>(null)
+  const handledSessionAccessErrorRef = useRef(false)
 
   const hasPreview = previewFile !== null || previewTool !== null
+  const sessionAccessError = isSessionAccessError(error)
 
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     scrollEndRef.current?.scrollIntoView({ block: 'end', behavior })
@@ -179,6 +188,14 @@ export function SessionDetailView({ sessionId, initialMessage, initialAttachment
     }
   }, [initialMessage, initialAttachments, session, loading, streaming, sendMessage, sessionId, router])
 
+  useEffect(() => {
+    if (!loading && !session && sessionAccessError && !handledSessionAccessErrorRef.current) {
+      handledSessionAccessErrorRef.current = true
+      toast.error('该会话不存在或不属于当前用户，已返回首页')
+      router.replace('/')
+    }
+  }, [loading, session, sessionAccessError, router])
+
   const handleSend = useCallback(
     async (message: string, uploadedFiles: FileInfo[]) => {
       try {
@@ -273,13 +290,15 @@ export function SessionDetailView({ sessionId, initialMessage, initialAttachment
   if (error && !session) {
     return (
       <div className="relative flex flex-col h-full flex-1 min-w-0 px-4 items-center justify-center gap-2">
-        <p className="text-sm text-red-600">{error.message}</p>
+        <p className="text-sm text-red-600">
+          {sessionAccessError ? '正在返回首页...' : error.message}
+        </p>
         <button
           type="button"
-          onClick={() => refresh()}
+          onClick={() => sessionAccessError ? router.replace('/') : refresh()}
           className="text-sm text-primary underline"
         >
-          重试
+          {sessionAccessError ? '返回首页' : '重试'}
         </button>
       </div>
     )
@@ -307,6 +326,7 @@ export function SessionDetailView({ sessionId, initialMessage, initialAttachment
                 onFileListOpenChange={setFileListOpen}
                 onFetchFiles={refreshFiles}
                 onFileClick={handleFileClick}
+                onOpenVNC={handleOpenVNC}
               />
             </div>
 

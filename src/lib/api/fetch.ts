@@ -1,5 +1,7 @@
 import type { ApiResponse } from "./types";
 
+export const AUTH_TOKEN_STORAGE_KEY = "faber_access_token";
+
 /**
  * API 配置
  */
@@ -32,6 +34,16 @@ type RequestOptions = RequestInit & {
   timeout?: number;
   skipErrorHandler?: boolean;
 };
+
+function getStoredAuthToken(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY);
+}
+
+function withAuthHeaders(headers: HeadersInit = {}): HeadersInit {
+  const token = getStoredAuthToken();
+  return token ? {...headers, Authorization: `Bearer ${token}`} : headers;
+}
 
 /**
  * 解析响应
@@ -124,10 +136,10 @@ export async function request<T = unknown>(
   } = options;
 
   // 合并请求头
-  const mergedHeaders: HeadersInit = {
+  const mergedHeaders: HeadersInit = withAuthHeaders({
     "Content-Type": "application/json",
     ...headers,
-  };
+  });
 
   // 如果是 FormData，删除 Content-Type 让浏览器自动设置
   if (fetchOptions.body instanceof FormData) {
@@ -159,7 +171,11 @@ export async function request<T = unknown>(
       if (skipErrorHandler) {
         return result.data as T;
       }
-      throw new ApiError(result.code, result.msg, result.data);
+      const error = new ApiError(result.code, result.msg, result.data);
+      if (result.code === 401 && typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("faber:unauthorized"));
+      }
+      throw error;
     }
 
     return result.data as T;
@@ -293,11 +309,11 @@ export async function createSSEStream(
     ...fetchOptions
   } = options || {};
 
-  const mergedHeaders: HeadersInit = {
+  const mergedHeaders: HeadersInit = withAuthHeaders({
     "Content-Type": "application/json",
     Accept: "text/event-stream",
     ...headers,
-  };
+  });
 
   const controller = new AbortController();
   // 只对初始连接设置超时，连接建立后会清除

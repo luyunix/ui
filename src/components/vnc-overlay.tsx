@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic'
 import { X, Loader2, WifiOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { VNCStatus } from '@/components/vnc-viewer'
+import {AUTH_TOKEN_STORAGE_KEY} from '@/lib/api/fetch'
 
 const VNCViewer = dynamic(
   () => import('@/components/vnc-viewer').then((m) => ({ default: m.VNCViewer })),
@@ -35,7 +36,9 @@ function buildVNCUrl(sessionId: string): string {
   }
 
   const protocol = isHttps ? 'wss:' : 'ws:'
-  return `${protocol}//${host}${pathname}/sessions/${sessionId}/vnc`
+  const token = window.localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)
+  const query = token ? `?token=${encodeURIComponent(token)}` : ''
+  return `${protocol}//${host}${pathname}/sessions/${sessionId}/vnc${query}`
 }
 
 export function VNCOverlay({ sessionId, onClose }: VNCOverlayProps) {

@@ -1,31 +1,24 @@
 'use client'
 
-import {useState} from 'react'
 import {useRouter} from 'next/navigation'
 import {Sidebar, SidebarContent, SidebarHeader, SidebarTrigger} from '@/components/ui/sidebar'
 import {Button} from '@/components/ui/button'
-import {Plus, Settings} from 'lucide-react'
+import {LogOut, Plus} from 'lucide-react'
 import {Kbd, KbdGroup} from '@/components/ui/kbd'
 import {SessionList} from '@/components/session-list'
-import {SettingsDialog} from '@/components/settings-dialog'
+import {FaberSettings} from '@/components/faber-settings'
+import {useAuth} from '@/providers/auth-provider'
 
 export function LeftPanel() {
   const router = useRouter()
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const {user, logout} = useAuth()
 
   return (
     <Sidebar>
       {/* 顶部的切换按钮 */}
       <SidebarHeader className="flex flex-row items-center justify-between gap-2 p-4">
         <SidebarTrigger className="cursor-pointer"/>
-        <Button
-          variant="outline"
-          size="icon-sm"
-          className="cursor-pointer"
-          onClick={() => setSettingsOpen(true)}
-        >
-          <Settings/>
-        </Button>
+        <FaberSettings/>
       </SidebarHeader>
       {/* 中间内容 */}
       <SidebarContent className="p-2">
@@ -45,7 +38,21 @@ export function LeftPanel() {
         {/* 会话列表 */}
         <SessionList/>
       </SidebarContent>
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen}/>
+      <div className="border-t p-3">
+        <div className="mb-2 min-w-0">
+          <div className="truncate text-sm font-medium text-zinc-800">{user?.username}</div>
+          <div className="truncate text-xs text-zinc-500">{user?.email}</div>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full cursor-pointer justify-start"
+          onClick={logout}
+        >
+          <LogOut className="size-4"/>
+          退出登录
+        </Button>
+      </div>
     </Sidebar>
   )
 }
