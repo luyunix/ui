@@ -3,8 +3,11 @@ import type { ApiResponse } from "./types";
 /**
  * API 配置
  */
+const defaultBaseURL =
+  process.env.NODE_ENV === "development" ? "http://localhost:8000/api" : "/api";
+
 const API_CONFIG = {
-  baseURL: process.env.NEXT_PUBLIC_API_BASE_URL || "/api",
+  baseURL: process.env.NEXT_PUBLIC_API_BASE_URL || defaultBaseURL,
   timeout: 30000, // 30秒
 } as const;
 
@@ -251,8 +254,7 @@ export function del<T = unknown>(
  */
 export function createSSEConnection(
   endpoint: string,
-  data?: unknown,
-  options?: RequestOptions
+  data?: unknown
 ): EventSource {
   const url = endpoint.startsWith("http")
     ? endpoint
@@ -478,4 +480,3 @@ function processSSEBuffer(
     processSSEEvent(event, onEvent, onError);
   }
 }
-

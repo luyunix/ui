@@ -1,11 +1,13 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import dynamic from 'next/dynamic'
 import type { ToolEvent } from '@/lib/api/types'
 import { getToolKind, getFriendlyToolLabel, getArg } from '@/components/tool-use/utils'
 import type { ToolKind } from '@/components/tool-use/utils'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
+import type { VNCStatus } from '@/components/vnc-viewer'
 import {
   Maximize2,
   Monitor,
@@ -17,7 +19,14 @@ import {
   Wrench,
   Bot,
   Sparkles,
+  Loader2,
+  WifiOff,
 } from 'lucide-react'
+
+const VNCViewer = dynamic(
+  () => import('@/components/vnc-viewer').then((m) => ({ default: m.VNCViewer })),
+  { ssr: false },
+)
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -25,6 +34,7 @@ import {
 
 export interface ToolPreviewPanelProps {
   tool: ToolEvent
+  sessionId?: string
   onClose: () => void
   onJumpToLatest?: () => void
   onOpenVNC?: () => void
@@ -58,18 +68,38 @@ function getToolDescription(kind: ToolKind): string {
   return map[kind]
 }
 
-function getToolIcon(kind: ToolKind) {
-  const map: Record<ToolKind, typeof Terminal> = {
-    bash: Terminal,
-    browser: Globe,
-    search: Search,
-    file: FileSearch,
-    mcp: Wrench,
-    a2a: Bot,
-    message: Monitor,
-    default: Monitor,
+function ToolKindIcon({ kind }: { kind: ToolKind }) {
+  const className = 'flex-shrink-0 text-gray-500'
+  switch (kind) {
+    case 'bash':
+      return <Terminal size={14} className={className} />
+    case 'browser':
+      return <Globe size={14} className={className} />
+    case 'search':
+      return <Search size={14} className={className} />
+    case 'file':
+      return <FileSearch size={14} className={className} />
+    case 'mcp':
+      return <Wrench size={14} className={className} />
+    case 'a2a':
+      return <Bot size={14} className={className} />
+    case 'message':
+    case 'default':
+      return <Monitor size={14} className={className} />
   }
-  return map[kind]
+}
+
+function buildVNCUrl(sessionId: string): string {
+  const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000/api'
+
+  try {
+    const url = new URL(apiBase)
+    const protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+    return `${protocol}//${url.host}${url.pathname}/sessions/${sessionId}/vnc`
+  } catch {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    return `${protocol}//${window.location.host}${apiBase}/sessions/${sessionId}/vnc`
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -132,10 +162,45 @@ function ShellPreview({ tool }: { tool: ToolEvent }) {
   )
 }
 
-function BrowserPreview({ tool, onOpenVNC }: { tool: ToolEvent; onOpenVNC?: () => void }) {
+function LiveBrowserFrame({ sessionId }: { sessionId: string }) {
+  const vncUrl = useMemo(() => buildVNCUrl(sessionId), [sessionId])
+  const [status, setStatus] = useState<VNCStatus>('connecting')
+  const [errorDetail, setErrorDetail] = useState('')
+
+  const handleStatusChange = useCallback((s: VNCStatus, detail?: string) => {
+    setStatus(s)
+    if (s === 'error' || s === 'disconnected') {
+      setErrorDetail(detail || '连接失败')
+    }
+  }, [])
+
+  const hasError = status === 'error' || status === 'disconnected'
+
+  return (
+    <div className="h-full w-full relative bg-black">
+      <VNCViewer url={vncUrl} viewOnly onStatusChange={handleStatusChange} />
+      {status === 'connecting' && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/80 text-white">
+          <Loader2 className="size-5 animate-spin" />
+          <span className="text-sm text-gray-300">正在连接实时浏览器...</span>
+        </div>
+      )}
+      {hasError && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/80 px-6 text-center">
+          <WifiOff className="size-6 text-gray-400" />
+          <span className="text-sm text-gray-200">实时浏览器连接失败</span>
+          <span className="text-xs text-gray-400">{errorDetail}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function BrowserPreview({ tool, sessionId, onOpenVNC }: { tool: ToolEvent; sessionId?: string; onOpenVNC?: () => void }) {
   const content = getToolContent(tool)
   const screenshot = typeof content?.screenshot === 'string' ? content.screenshot : null
   const url = getArg(tool.args, 'url', 'href', 'link')
+  const showLiveBrowser = sessionId != null && tool.status === 'calling'
 
   return (
     <div className="flex flex-col gap-3 p-4 h-full">
@@ -146,7 +211,9 @@ function BrowserPreview({ tool, onOpenVNC }: { tool: ToolEvent; onOpenVNC?: () =
         </div>
       )}
       <div className="flex-1 rounded-lg overflow-hidden border min-h-0 relative">
-        {screenshot ? (
+        {showLiveBrowser ? (
+          <LiveBrowserFrame sessionId={sessionId} />
+        ) : screenshot ? (
           <ScrollArea className="h-full">
             <img
               src={screenshot}
@@ -335,13 +402,13 @@ function DefaultPreview({ tool }: { tool: ToolEvent }) {
 
 export function ToolPreviewPanel({
   tool,
+  sessionId,
   onClose,
   onJumpToLatest,
   onOpenVNC,
 }: ToolPreviewPanelProps) {
   const kind = getToolKind(tool)
   const label = getFriendlyToolLabel(tool)
-  const ToolIcon = getToolIcon(kind)
   const toolDesc = getToolDescription(kind)
 
   return (
@@ -366,7 +433,7 @@ export function ToolPreviewPanel({
           <span className="font-medium text-gray-800">{toolDesc}</span>
         </div>
         <div className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 border border-gray-200 bg-gray-100 text-gray-700 text-xs w-fit max-w-full">
-          <ToolIcon size={14} className="flex-shrink-0 text-gray-500" />
+          <ToolKindIcon kind={kind} />
           <span className="truncate">{label}</span>
         </div>
       </div>
@@ -374,7 +441,7 @@ export function ToolPreviewPanel({
       {/* Content with overlaid jump button */}
       <div className="flex-1 overflow-hidden relative">
         {kind === 'bash' && <ShellPreview tool={tool} />}
-        {kind === 'browser' && <BrowserPreview tool={tool} onOpenVNC={onOpenVNC} />}
+        {kind === 'browser' && <BrowserPreview tool={tool} sessionId={sessionId} onOpenVNC={onOpenVNC} />}
         {kind === 'search' && <SearchPreview tool={tool} />}
         {kind === 'file' && <FileToolPreview tool={tool} />}
         {kind === 'mcp' && <MCPPreview tool={tool} />}

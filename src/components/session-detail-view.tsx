@@ -71,9 +71,15 @@ export function SessionDetailView({ sessionId, initialMessage, initialAttachment
   const [vncOpen, setVncOpen] = useState(false)
   const initialMessageSentRef = useRef(false)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const scrollEndRef = useRef<HTMLDivElement>(null)
   const prevToolCountRef = useRef(0)
+  const autoPreviewToolIdRef = useRef<string | null>(null)
 
   const hasPreview = previewFile !== null || previewTool !== null
+
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
+    scrollEndRef.current?.scrollIntoView({ block: 'end', behavior })
+  }, [])
 
   /**
    * 将 previewTool 解析为 timeline 中最新版本的工具对象。
@@ -111,13 +117,46 @@ export function SessionDetailView({ sessionId, initialMessage, initialAttachment
       return n
     }, 0)
 
+    let frame: number | null = null
     if (toolCount > prevToolCountRef.current && latestTool) {
-      setPreviewTool(latestTool)
-      setPreviewFile(null)
-      scrollContainerRef.current?.scrollTo({ top: scrollContainerRef.current.scrollHeight, behavior: 'smooth' })
+      frame = requestAnimationFrame(() => {
+        setPreviewTool(latestTool)
+        setPreviewFile(null)
+        autoPreviewToolIdRef.current = (latestTool as { tool_call_id?: string }).tool_call_id ?? null
+        scrollToBottom()
+      })
     }
     prevToolCountRef.current = toolCount
-  }, [timeline, session?.status, vncOpen])
+
+    return () => {
+      if (frame !== null) cancelAnimationFrame(frame)
+    }
+  }, [timeline, session?.status, vncOpen, scrollToBottom])
+
+  useEffect(() => {
+    if (!resolvedPreviewTool) return
+    if (resolvedPreviewTool.status !== 'called') return
+
+    const toolCallId = (resolvedPreviewTool as { tool_call_id?: string }).tool_call_id
+    if (!toolCallId || autoPreviewToolIdRef.current !== toolCallId) return
+
+    const frame = requestAnimationFrame(() => {
+      setPreviewTool(null)
+      autoPreviewToolIdRef.current = null
+    })
+
+    return () => cancelAnimationFrame(frame)
+  }, [resolvedPreviewTool])
+
+  useEffect(() => {
+    if (loading) return
+
+    const frame = requestAnimationFrame(() => {
+      scrollToBottom()
+    })
+
+    return () => cancelAnimationFrame(frame)
+  }, [timeline.length, streaming, session?.status, loading, scrollToBottom])
 
   useEffect(() => {
     if (
@@ -159,6 +198,7 @@ export function SessionDetailView({ sessionId, initialMessage, initialAttachment
   }, [refreshFiles])
 
   const handleFileClick = useCallback((file: AttachmentFile) => {
+    autoPreviewToolIdRef.current = null
     setPreviewFile(file)
     setPreviewTool(null)
   }, [])
@@ -166,11 +206,13 @@ export function SessionDetailView({ sessionId, initialMessage, initialAttachment
   const handleToolClick = useCallback((tool: ToolEvent) => {
     const kind = getToolKind(tool)
     if (kind === 'message') return
+    autoPreviewToolIdRef.current = null
     setPreviewTool(tool)
     setPreviewFile(null)
   }, [])
 
   const handleClosePreview = useCallback(() => {
+    autoPreviewToolIdRef.current = null
     setPreviewFile(null)
     setPreviewTool(null)
   }, [])
@@ -178,11 +220,12 @@ export function SessionDetailView({ sessionId, initialMessage, initialAttachment
   const handleJumpToLatest = useCallback(() => {
     const latest = findLatestTool(timeline)
     if (latest) {
+      autoPreviewToolIdRef.current = null
       setPreviewTool(latest)
       setPreviewFile(null)
     }
-    scrollContainerRef.current?.scrollTo({ top: scrollContainerRef.current.scrollHeight, behavior: 'smooth' })
-  }, [timeline])
+    scrollToBottom('smooth')
+  }, [timeline, scrollToBottom])
 
   const handleOpenVNC = useCallback(() => {
     setVncOpen(true)
@@ -196,10 +239,10 @@ export function SessionDetailView({ sessionId, initialMessage, initialAttachment
       setPreviewTool(latest)
       setPreviewFile(null)
       setTimeout(() => {
-        scrollContainerRef.current?.scrollTo({ top: scrollContainerRef.current.scrollHeight, behavior: 'smooth' })
+        scrollToBottom('smooth')
       }, 100)
     }
-  }, [timeline, session?.status])
+  }, [timeline, session?.status, scrollToBottom])
 
   const handleStop = useCallback(async () => {
     if (!session) return
@@ -284,14 +327,15 @@ export function SessionDetailView({ sessionId, initialMessage, initialAttachment
                   />
                 ))}
 
-                {(session?.status === 'running' || (hasInitialMessage && !initialMessageSentRef.current)) && (
+                {session?.status === 'running' && (
                   <div className="flex items-center gap-2 text-sm text-gray-500 py-3">
                     <Loader2 className="size-4 animate-spin" />
                     <span>正在思考中...</span>
                   </div>
                 )}
 
-                <div className="h-[140px]" />
+                <div className="h-4" />
+                <div ref={scrollEndRef} aria-hidden="true" />
               </div>
             </div>
 
@@ -319,6 +363,7 @@ export function SessionDetailView({ sessionId, initialMessage, initialAttachment
           <div className="flex-shrink-0 w-[600px] h-full py-2 pr-2 animate-in slide-in-from-right duration-300">
             <ToolPreviewPanel
               tool={resolvedPreviewTool}
+              sessionId={sessionId}
               onClose={handleClosePreview}
               onJumpToLatest={handleJumpToLatest}
               onOpenVNC={getToolKind(resolvedPreviewTool) === 'browser' ? handleOpenVNC : undefined}
