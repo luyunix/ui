@@ -143,8 +143,8 @@ export const sessionApi = {
           params,
           { 
             signal: controller.signal,
-            // 流式连接需要很长时间，设置为 5 分钟超时
-            timeout: 5 * 60 * 1000
+            // 卡住保护：后端工具有独立超时，前端连接也不要长时间悬挂。
+            timeout: 45 * 1000
           }
         );
         
@@ -253,4 +253,3 @@ export const sessionApi = {
     );
   },
 };
-

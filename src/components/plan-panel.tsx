@@ -2,7 +2,7 @@
 
 import { cn } from '@/lib/utils'
 import { useState } from 'react'
-import { Check, ChevronDown, ChevronUp, Clock } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, Clock, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { PlanStep } from '@/lib/api/types'
 
@@ -20,7 +20,13 @@ export function PlanPanel({ className, steps: stepsProp = [] }: PlanPanelProps) 
   if (steps.length === 0) return null
 
   const completedCount = steps.filter((s) => s.status === 'completed').length
+  const runningCount = steps.some((s) => s.status === 'running') ? 1 : 0
+  const progressCount = Math.min(steps.length, completedCount + runningCount)
   const totalCount = steps.length
+  const currentStep =
+    steps.find((step) => step.status === 'running') ??
+    steps.find((step) => step.status === 'pending') ??
+    steps[steps.length - 1]
 
   return (
     <div className={cn('bg-white rounded-xl border', className)}>
@@ -36,7 +42,7 @@ export function PlanPanel({ className, steps: stepsProp = [] }: PlanPanelProps) 
               <Clock size={16} />
               <div className="flex flex-col w-full gap-0.5 truncate">
                 <div className="text-sm truncate">
-                  {steps[0]?.description ?? '暂无步骤'}
+                  {currentStep?.description ?? '暂无步骤'}
                 </div>
               </div>
             </div>
@@ -45,7 +51,7 @@ export function PlanPanel({ className, steps: stepsProp = [] }: PlanPanelProps) 
         {/* 右侧操作按钮&步骤信息 */}
         <div className="flex h-full justify-center gap-2 flex-shrink-0 items-center py-2.5">
           <span className="text-xs text-gray-500">
-            {completedCount} / {totalCount}
+            {progressCount} / {totalCount}
           </span>
           <ChevronUp className="text-gray-700" size={16} />
         </div>
@@ -73,7 +79,7 @@ export function PlanPanel({ className, steps: stepsProp = [] }: PlanPanelProps) 
                 <span className="text-gray-700 font-bold">任务进度</span>
                 <div className="flex items-center gap-3">
                   <span className="text-xs text-gray-500">
-                    {completedCount} / {totalCount}
+                    {progressCount} / {totalCount}
                   </span>
                 </div>
               </div>
@@ -85,6 +91,8 @@ export function PlanPanel({ className, steps: stepsProp = [] }: PlanPanelProps) 
                 >
                   {step.status === 'completed' ? (
                     <Check size={16} className="relative top-0.5 flex-shrink-0" />
+                  ) : step.status === 'running' ? (
+                    <Loader2 size={16} className="relative top-0.5 flex-shrink-0 animate-spin" />
                   ) : (
                     <Clock size={16} className="relative top-0.5 flex-shrink-0" />
                   )}

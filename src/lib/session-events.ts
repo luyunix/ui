@@ -18,7 +18,79 @@ import type {
 } from "@/lib/api/types";
 
 /** 后端返回的原始事件（可能用 event 或 type 表示类型） */
-type RawEvent = { event?: string; type?: string; data?: unknown };
+type RawEvent = {
+  event?: string;
+  type?: string;
+  data?: unknown;
+  id?: string;
+  created_at?: number;
+  [key: string]: unknown;
+};
+
+function baseRawEventData(raw: RawEvent): Record<string, unknown> {
+  return {
+    event_id: raw.id,
+    created_at: raw.created_at,
+  };
+}
+
+function normalizeRawDomainEvent(raw: RawEvent, type: SSEEventType): SSEEventData | null {
+  const base = baseRawEventData(raw);
+
+  switch (type) {
+    case "message":
+      return {
+        type,
+        data: {
+          ...base,
+          role: raw.role,
+          message: raw.message,
+          attachments: raw.attachments ?? [],
+        } as ChatMessage,
+      };
+    case "title":
+      return { type, data: { ...base, title: String(raw.title ?? "") } };
+    case "plan": {
+      const plan = raw.plan as { steps?: PlanStep[] } | undefined;
+      return {
+        type,
+        data: {
+          ...base,
+          steps: Array.isArray(plan?.steps) ? plan.steps : [],
+        },
+      };
+    }
+    case "step": {
+      const step = raw.step as StepEvent | undefined;
+      if (!step) return null;
+      return { type, data: { ...base, ...step } };
+    }
+    case "tool":
+      const functionArgs =
+        raw.function_args && typeof raw.function_args === "object" && !Array.isArray(raw.function_args)
+          ? raw.function_args as Record<string, unknown>
+          : {};
+      return {
+        type,
+        data: {
+          ...base,
+          tool_call_id: String(raw.tool_call_id ?? ""),
+          name: String(raw.tool_name ?? ""),
+          status: raw.status as ToolEvent["status"],
+          function: String(raw.function_name ?? ""),
+          args: functionArgs,
+          content: raw.function_result ?? raw.tool_content,
+        },
+      };
+    case "done":
+    case "wait":
+      return { type, data: base };
+    case "error":
+      return { type, data: { ...base, error: String(raw.error ?? "") } };
+    default:
+      return null;
+  }
+}
 
 /**
  * 将后端单条事件转为前端 SSEEventData（统一 type + data）
@@ -26,7 +98,8 @@ type RawEvent = { event?: string; type?: string; data?: unknown };
 export function normalizeEvent(raw: RawEvent): SSEEventData | null {
   const type = (raw.type ?? raw.event) as SSEEventType | undefined;
   const data = raw.data;
-  if (!type || data === undefined) return null;
+  if (!type) return null;
+  if (data === undefined) return normalizeRawDomainEvent(raw, type);
   return { type, data } as SSEEventData;
 }
 
@@ -302,19 +375,58 @@ export function eventsToTimeline(events: SSEEventData[]): TimelineItem[] {
   return list;
 }
 
+function mergePlanSteps(current: PlanStep[], incoming: PlanStep[]): PlanStep[] {
+  const currentById = new Map(current.map((step) => [step.id, step]));
+  const incomingById = new Map(incoming.map((step) => [step.id, step]));
+  const merged: PlanStep[] = [];
+
+  for (const step of current) {
+    const updated = incomingById.get(step.id);
+    if (updated) {
+      merged.push({ ...step, ...updated });
+    } else {
+      merged.push(step.status === "pending" ? { ...step, status: "completed" } : step);
+    }
+  }
+
+  for (const step of incoming) {
+    if (!currentById.has(step.id)) {
+      merged.push(step);
+    }
+  }
+
+  return merged;
+}
+
 /**
- * 从事件列表中取最新的 plan 步骤（用于底部任务进度面板）
+ * 从事件列表中合并当前轮次的 plan/step 步骤（用于底部任务进度面板）
  */
 export function getLatestPlanFromEvents(events: SSEEventData[]): PlanStep[] {
   let steps: PlanStep[] = [];
-  for (let i = events.length - 1; i >= 0; i--) {
-    const ev = events[i];
+  for (const ev of events) {
+    if (ev.type === "message") {
+      const msg = ev.data as ChatMessage;
+      if (msg.role === "user") {
+        steps = [];
+      }
+      continue;
+    }
+
     if (ev.type === "plan") {
       const plan = ev.data as PlanEvent;
       if (plan.steps && Array.isArray(plan.steps)) {
-        steps = plan.steps;
+        steps = mergePlanSteps(steps, plan.steps);
       }
-      break;
+      continue;
+    }
+
+    if (ev.type === "step") {
+      const step = ev.data as StepEvent;
+      steps = steps.map((item) => (
+        item.id === step.id
+          ? { ...item, status: step.status, description: step.description }
+          : item
+      ));
     }
   }
   return steps;
