@@ -3,7 +3,7 @@
 import {useRouter} from 'next/navigation'
 import {Sidebar, SidebarContent, SidebarHeader, SidebarTrigger} from '@/components/ui/sidebar'
 import {Button} from '@/components/ui/button'
-import {LogOut, Plus} from 'lucide-react'
+import {BookOpenText, LogOut, Plus} from 'lucide-react'
 import {Kbd, KbdGroup} from '@/components/ui/kbd'
 import {SessionList} from '@/components/session-list'
 import {FaberSettings} from '@/components/faber-settings'
@@ -34,6 +34,14 @@ export function LeftPanel() {
             <Kbd>⌘</Kbd>
             <Kbd>K</Kbd>
           </KbdGroup>
+        </Button>
+        <Button
+          variant="ghost"
+          className="cursor-pointer mb-3 w-full justify-start text-zinc-600 hover:text-zinc-900"
+          onClick={() => router.push('/principles')}
+        >
+          <BookOpenText className="size-4"/>
+          系统原理
         </Button>
         {/* 会话列表 */}
         <SessionList/>
