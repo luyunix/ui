@@ -1,0 +1,11 @@
+import {Brain, CheckCircle2, Clock3, Database} from 'lucide-react'
+import {pipeline, taskFlow} from './principles-data'
+
+export function PrinciplesOverview() {
+  const facts = [[Clock3, '长任务不会阻塞页面，前端持续消费 SSE。'], [Database, '消息与执行事件独立落库，刷新后可恢复。'], [CheckCircle2, '任务完成后，消息、附件和报告一起回到会话。']] as const
+  return <>
+    <section className="border-y bg-white/55 px-1 py-5"><div className="grid gap-4 md:grid-cols-[1.2fr_0.8fr]"><div><div className="mb-3 flex items-center gap-2 text-sm font-medium text-zinc-500"><Brain className="size-4"/>核心模型</div><h2 className="mb-3 text-2xl font-semibold text-zinc-900">计划、执行、观察、修正</h2><p className="max-w-3xl text-sm leading-7 text-zinc-600">Faber 把一次请求变成可追踪的任务会话：先拆计划，再逐步使用工具执行；运行过程写入事件流和数据库，前端据此重建时间线、进度和最终交付物。</p></div><div className="grid content-start gap-3 text-sm text-zinc-600">{facts.map(([Icon, text]) => <div key={text} className="flex items-start gap-3 rounded-lg border bg-white p-3"><Icon className="mt-0.5 size-4 text-zinc-500"/><span>{text}</span></div>)}</div></div></section>
+    <section><h2 className="mb-3 text-base font-semibold text-zinc-800">一次任务的完整处理流程</h2><div className="rounded-lg border bg-white">{taskFlow.map(([title, body], index) => <div key={title} className="grid gap-3 border-b px-4 py-4 last:border-b-0 md:grid-cols-[160px_1fr]"><div className="flex items-center gap-2 text-sm font-semibold text-zinc-800"><span className="flex size-6 items-center justify-center rounded-md bg-zinc-100 text-xs tabular-nums text-zinc-600">{index + 1}</span>{title}</div><p className="text-sm leading-6 text-zinc-600">{body}</p></div>)}</div></section>
+    <section><h2 className="mb-3 text-base font-semibold text-zinc-800">执行链路</h2><div className="grid gap-3 lg:grid-cols-3">{pipeline.map(([title, body, Icon], index) => <div key={title} className="rounded-lg border bg-white p-4"><div className="mb-3 flex items-center justify-between gap-3"><div className="flex items-center gap-2 text-sm font-semibold text-zinc-800"><Icon className="size-4"/>{title}</div><span className="text-xs tabular-nums text-zinc-400">{String(index + 1).padStart(2, '0')}</span></div><p className="text-sm leading-6 text-zinc-600">{body}</p></div>)}</div></section>
+  </>
+}
